@@ -11,25 +11,22 @@ jobs:
   check-and-build:
     runs-on: ubuntu-latest
     steps:
-      - name: Get Latest Upstream Tag
+      - name: Get Latest Upstream SHA
         id: upstream
         run: |
-          # Fetch the latest tag from the repo directly, avoiding the flaky "Releases" API
-          TAG=$(git ls-remote --tags --sort='v:refname' https://github.com/YoYoGames/gm-cli.git | tail -n1 | sed 's/.*\///' | sed 's/\^{}//')
+          # Since the repo has no tags, we use the latest commit SHA from the main branch
+          SHA=$(git ls-remote https://github.com/YoYoGames/gm-cli.git HEAD | awk '{ print $1 }')
+          SHORT_SHA=$(echo $SHA | cut -c1-7)
           
-          # Fallback to 'main' if no tags are found
-          if [ -z "$TAG" ] || [ "$TAG" == "null" ]; then
-            TAG="main"
-          fi
-          
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "Using Tag/Branch: $TAG"
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "Using SHA: $SHA"
         
       - name: Check Existing Release
         id: check
         run: |
-          # Check if we already have a release for this tag in YOUR repo
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.upstream.outputs.tag }})
+          # We check if a release already exists named after this specific commit SHA
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.upstream.outputs.short_sha }})
           if [ "$STATUS" == "200" ]; then
              echo "exists=true" >> $GITHUB_OUTPUT
           else
@@ -39,9 +36,10 @@ jobs:
       - name: Build Standalone EXE
         if: steps.check.outputs.exists == 'false'
         run: |
-          # Clone the specific tag/branch
-          git clone --depth 1 --branch ${{ steps.upstream.outputs.tag }} https://github.com/YoYoGames/gm-cli.git build_dir
+          # Clone the specific commit
+          git clone https://github.com/YoYoGames/gm-cli.git build_dir
           cd build_dir
+          git checkout ${{ steps.upstream.outputs.sha }}
           
           # Use Bun to compile (Fast, single-binary execution)
           curl -fsSL https://bun.sh/install | bash
@@ -56,9 +54,11 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.upstream.outputs.tag }}
-          name: GM-CLI Build ${{ steps.upstream.outputs.tag }}
-          body: "Automated standalone build of the GameMaker CLI."
+          tag_name: ${{ steps.upstream.outputs.short_sha }}
+          name: GM-CLI Build (${{ steps.upstream.outputs.short_sha }})
+          body: |
+            Automated standalone build of the GameMaker CLI.
+            Built from upstream commit: ${{ steps.upstream.outputs.sha }}
           files: gm-cli.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
