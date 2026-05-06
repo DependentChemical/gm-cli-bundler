@@ -14,12 +14,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm' # Enables automatic caching of ~/.npm
+          cache: 'npm'
 
-      - name: Build Binary
-        # We skip the manual 'npm install' because 'build:binary' 
-        # runs its own clean install internally.
-        run: npm run build:binary
+      - name: Install & Build Binary
+        run: |
+          # Bootstrap install so the build script can start
+          npm install 
+          # Run the full binary build process
+          npm run build:binary
         env:
           BUNDLE_NATIVE_MODULES: "true"
 
