@@ -14,30 +14,51 @@ jobs:
       - name: Get Latest Upstream Tag
         id: upstream
         run: |
-          TAG=$(curl -s https://api.github.com/repos/YoYoGames/gm-cli/releases/latest | jq -r .tag_name)
+          # Fetch the latest tag from the repo directly, avoiding the flaky "Releases" API
+          TAG=$(git ls-remote --tags --sort='v:refname' https://github.com/YoYoGames/gm-cli.git | tail -n1 | sed 's/.*\///' | sed 's/\^{}//')
+          
+          # Fallback to 'main' if no tags are found
+          if [ -z "$TAG" ] || [ "$TAG" == "null" ]; then
+            TAG="main"
+          fi
+          
           echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Using Tag/Branch: $TAG"
         
       - name: Check Existing Release
         id: check
         run: |
+          # Check if we already have a release for this tag in YOUR repo
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.upstream.outputs.tag }})
-          echo "exists=$([ "$STATUS" == "200" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          if [ "$STATUS" == "200" ]; then
+             echo "exists=true" >> $GITHUB_OUTPUT
+          else
+             echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Build if New
+      - name: Build Standalone EXE
         if: steps.check.outputs.exists == 'false'
         run: |
-          git clone --branch ${{ steps.upstream.outputs.tag }} https://github.com/YoYoGames/gm-cli.git .
-          # Using Bun to compile without installing Node
+          # Clone the specific tag/branch
+          git clone --depth 1 --branch ${{ steps.upstream.outputs.tag }} https://github.com/YoYoGames/gm-cli.git build_dir
+          cd build_dir
+          
+          # Use Bun to compile (Fast, single-binary execution)
           curl -fsSL https://bun.sh/install | bash
-          ~/.bun/bin/bun install
-          ~/.bun/bin/bun build ./src/bin/gm-cli.ts --compile --minify --target=bun-windows-x64 --outfile gm-cli.exe
+          export PATH="$HOME/.bun/bin:$PATH"
+          
+          bun install
+          
+          # Use the verified entry point: src/bin/gm-cli.ts
+          bun build ./src/bin/gm-cli.ts --compile --minify --target=bun-windows-x64 --outfile ../gm-cli.exe
 
-      - name: Upload to Releases
+      - name: Create Release
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.upstream.outputs.tag }}
-          name: GM-CLI Standalone ${{ steps.upstream.outputs.tag }}
+          name: GM-CLI Build ${{ steps.upstream.outputs.tag }}
+          body: "Automated standalone build of the GameMaker CLI."
           files: gm-cli.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
