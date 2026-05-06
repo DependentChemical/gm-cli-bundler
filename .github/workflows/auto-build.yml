@@ -48,7 +48,7 @@ jobs:
           bun install
           
           # Use the verified entry point: src/bin/gm-cli.ts
-          bun build ./src/bin/gm-cli.ts --compile --minify --target=bun-windows-x64 --outfile ../gm-cli.exe
+          bun build ./src/bin/cli.ts --compile --minify --target=bun-windows-x64 --outfile ../gm-cli.exe
 
       - name: Create Release
         if: steps.check.outputs.exists == 'false'
