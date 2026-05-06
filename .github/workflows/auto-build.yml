@@ -1,0 +1,43 @@
+name: Build Standalone GM-CLI
+on:
+  schedule:
+    - cron: '0 */12 * * *' # Checks twice a day
+  workflow_dispatch: # Allows you to force a build manually
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Latest Upstream Tag
+        id: upstream
+        run: |
+          TAG=$(curl -s https://api.github.com/repos/YoYoGames/gm-cli/releases/latest | jq -r .tag_name)
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+        
+      - name: Check Existing Release
+        id: check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.upstream.outputs.tag }})
+          echo "exists=$([ "$STATUS" == "200" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+
+      - name: Build if New
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git clone --branch ${{ steps.upstream.outputs.tag }} https://github.com/YoYoGames/gm-cli.git .
+          # Using Bun to compile without installing Node
+          curl -fsSL https://bun.sh/install | bash
+          ~/.bun/bin/bun install
+          ~/.bun/bin/bun build ./src/bin/gm-cli.ts --compile --minify --target=bun-windows-x64 --outfile gm-cli.exe
+
+      - name: Upload to Releases
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.upstream.outputs.tag }}
+          name: GM-CLI Standalone ${{ steps.upstream.outputs.tag }}
+          files: gm-cli.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
