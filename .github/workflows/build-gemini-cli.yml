@@ -1,22 +1,28 @@
 name: Remote Build Gemini CLI
-on: workflow_dispatch # Manual trigger
+on: workflow_dispatch
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Clone Google Gemini CLI
+      - name: Clone Repository
         run: |
           git clone https://github.com/google-gemini/gemini-cli.git .
           git checkout main
-      - uses: oven-sh/setup-bun@v1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
-      - name: Install & Build Binary
-        run: |
-          bun install
-          bun run build:binary 
+          node-version: '20'
+          cache: 'npm' # Enables automatic caching of ~/.npm
+
+      - name: Build Binary
+        # We skip the manual 'npm install' because 'build:binary' 
+        # runs its own clean install internally.
+        run: npm run build:binary
         env:
           BUNDLE_NATIVE_MODULES: "true"
+
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
