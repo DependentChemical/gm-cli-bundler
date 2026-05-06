@@ -1,0 +1,38 @@
+name: Remote Build Gemini CLI
+on: workflow_dispatch # Manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Google Gemini CLI
+        run: |
+          git clone https://github.com/google-gemini/gemini-cli.git .
+          git checkout main
+
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Patch "NPM Disease" (Bun Compatibility)
+        # There's a known bug where Bun fails on the .wasm?binary imports in this repo.
+        # This sed command fixes the imports so Bun can actually compile it.
+        run: |
+          find packages/core -name "*.ts" -type f -exec sed -i 's/\.wasm?binary/\.wasm/g' {} +
+
+      - name: Install & Bundle
+        run: |
+          bun install
+          # We use their internal bundle script to flatten the monorepo first
+          bun run bundle 
+
+      - name: Compile to Windows EXE
+        run: |
+          # We take the bundled JS and bake it into a standalone Windows binary
+          bun build ./bundle/gemini.js --compile --target=bun-windows-x64 --outfile gemini-cli.exe
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-cli-windows
+          path: gemini-cli.exe
